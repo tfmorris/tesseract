@@ -426,7 +426,7 @@ AC_ARG_VAR(LIBLEPT_HEADERSDIR,[Leptonica headers directory])
 
 have_lept=no
 if test "$LIBLEPT_HEADERSDIR" = "" ; then
-  LIBLEPT_HEADERSDIR="/usr/local/include /usr/include /opt/local/include/leptonica"
+  LIBLEPT_HEADERSDIR="/usr/local/include /usr/include /opt/local/include/leptonica /opt/local/include"
 fi
 for incd in $LIBLEPT_HEADERSDIR
 do

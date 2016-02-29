@@ -795,6 +795,8 @@ static int SelectBestWords(double rating_ratio,
                            bool debug,
                            PointerVector<WERD_RES>* new_words,
                            PointerVector<WERD_RES>* best_words) {
+
+
   // Process the smallest groups of words that have an overlapping word
   // boundary at the end.
   GenericVector<WERD_RES*> out_words;
@@ -1255,14 +1257,26 @@ float Tesseract::ClassifyBlobAsWord(int pass_n, PAGE_RES_IT* pr_it,
   SetupWordPassN(1, &wd);
   classify_word_and_language(pass_n, &it, &wd);
   if (debug_noise_removal) {
-    tprintf("word xheight=%g, row=%g, range=[%g,%g]\n", word_res->x_height,
-            wd.row->x_height(), wd.word->raw_choice->min_x_height(),
-            wd.word->raw_choice->max_x_height());
+    if (wd.word->raw_choice != NULL) {
+      tprintf("word xheight=%g, row=%g, range=[%g,%g]\n", word_res->x_height,
+              wd.row->x_height(), wd.word->raw_choice->min_x_height(),
+              wd.word->raw_choice->max_x_height());
+    } else {
+      tprintf("Got word with null raw choice  xheight=%g, row=%g\n", word_res->x_height,
+              wd.row->x_height());
+    }
   }
-  float cert = wd.word->raw_choice->certainty();
-  float rat = wd.word->raw_choice->rating();
-  *c2 = rat > 0.0f ? cert * cert / rat : 0.0f;
-  *best_str = wd.word->raw_choice->unichar_string();
+  float cert = 0.0f;
+  if (wd.word->raw_choice != NULL) { // This probably shouldn't happen, but...
+    cert = wd.word->raw_choice->certainty();
+    float rat = wd.word->raw_choice->rating();
+    *c2 = rat > 0.0f ? cert * cert / rat : 0.0f;
+    *best_str = wd.word->raw_choice->unichar_string();
+  } else {
+    *c2 = 0.0f;
+    *best_str = "";
+  }
+
   it.DeleteCurrentWord();
   pr_it->ResetWordIterator();
   return cert;

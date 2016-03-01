@@ -1042,6 +1042,7 @@ bool TessBaseAPI::ProcessPagesMultipageTiff(const l_uint8 *data,
   OpenclDevice od;
 #endif  // USE_OPENCL
   int page = (tessedit_page_number >= 0) ? tessedit_page_number : 0;
+  tprintf("In Multipage TIFF - data = %ul\n", data);
   for (; ; ++page) {
     if (tessedit_page_number >= 0)
       page = tessedit_page_number;
@@ -1051,7 +1052,18 @@ bool TessBaseAPI::ProcessPagesMultipageTiff(const l_uint8 *data,
       pix = od.pixReadMemTiffCl(data, size, page);
     } else {
 #endif  // USE_OPENCL
-      pix = pixReadMemTiff(data, size, page);
+      // TODO(tfmorris): read by page # is a N! operation, but Leptonica doesn't
+      // provide lower level access to the necessary libtiff functions.
+      auto begin = std::chrono::high_resolution_clock::now();
+      if (data) {
+        pix = pixReadMemTiff(data, size, page);
+      } else {
+        pix = pixReadTiff(filename, page);
+      }
+      auto end = std::chrono::high_resolution_clock::now();
+      auto duration = std::chrono::duration_cast<std::chrono::nanoseconds>(end-begin).count();
+      int words = pix->h * pix->wpl;
+      tprintf("Read %d words in %.2f ms.\n", words, duration / 1000000.0);
 #ifdef USE_OPENCL
     }
 #endif  // USE_OPENCL
@@ -1090,7 +1102,7 @@ bool TessBaseAPI::ProcessPages(const char* filename, const char* retry_config,
 }
 
 // In the ideal scenario, Tesseract will start working on data as soon
-// as it can. For example, if you steam a filelist through stdin, we
+// as it can. For example, if you stream a filelist through stdin, we
 // should start the OCR process as soon as the first filename is
 // available. This is particularly useful when hooking Tesseract up to
 // slow hardware such as a book scanning machine.
@@ -1123,46 +1135,55 @@ bool TessBaseAPI::ProcessPagesInternal(const char* filename,
 
   // At this point we are officially in autodection territory.
   // That means we are going to buffer stdin so that it is
-  // seekable. To keep code simple we will also buffer data
-  // coming from a file.
+  // seekable.
   std::string buf;
   if (stdInput) {
     buf.assign((std::istreambuf_iterator<char>(std::cin)),
                (std::istreambuf_iterator<char>()));
-  } else {
-    std::ifstream ifs(filename, std::ios::binary);
-    if (ifs) {
-      buf.assign((std::istreambuf_iterator<char>(ifs)),
-                 (std::istreambuf_iterator<char>()));
-    } else {
-      tprintf("ERROR: Can not open input file %s\n", filename);
-      return false;
-    }
   }
 
   // Here is our autodetection
-  int format;
-  const l_uint8 * data = reinterpret_cast<const l_uint8 *>(buf.c_str());
-  findFileFormatBuffer(data, &format);
+  int format = IFF_UNKNOWN;
+  const l_uint8 * data = NULL;
+  if (stdInput) {
+    const l_uint8 * sniff = reinterpret_cast<const l_uint8 *>(buf.substr(0,12).c_str());
+    findFileFormatBuffer(sniff, &format); // This only needs 12 bytes
+    // TODO(tfmorris) this reads in and buffers *entire* file
+    data = reinterpret_cast<const l_uint8 *>(buf.c_str());
+    tprintf("Done reading input file of %d bytes\n", buf.length());
+  } else {
+    findFileFormat(filename, &format);
+  }
+  tprintf("Format = %d\n", format);
+
 
   // Maybe we have a filelist
   if (format == IFF_UNKNOWN) {
-    STRING s(buf.c_str());
-    return ProcessPagesFileList(NULL, &s, retry_config,
-                                timeout_millisec, renderer,
-                                tesseract_->tessedit_page_number);
+    if (stdInput) {
+      STRING s(buf.c_str());
+      return ProcessPagesFileList(NULL, &s, retry_config,
+                                  timeout_millisec, renderer,
+                                  tesseract_->tessedit_page_number);
+    } else {
+      FILE* infp = fopen(filename, "rb");
+      if (!infp) {
+        tprintf("ERROR: Can not open input file %s\n", filename);
+        return false;
+      }
+      return ProcessPagesFileList(infp, NULL, retry_config,
+                                  timeout_millisec, renderer,
+                                  tesseract_->tessedit_page_number);
+    }
   }
-
-  // Maybe we have a TIFF which is potentially multipage
-  bool tiff = (format == IFF_TIFF || format == IFF_TIFF_PACKBITS ||
-               format == IFF_TIFF_RLE || format == IFF_TIFF_G3 ||
-               format == IFF_TIFF_G4 || format == IFF_TIFF_LZW ||
-               format == IFF_TIFF_ZIP);
 
   // Fail early if we can, before producing any output
   Pix *pix = NULL;
-  if (!tiff) {
-    pix = pixReadMem(data, buf.size());
+  if (format != IFF_TIFF) {
+    if (stdInput) {
+      pix = pixReadMem(data, buf.size());
+    } else {
+      pix = pixRead(filename);
+    }
     if (pix == NULL) {
       return false;
     }
@@ -1177,7 +1198,8 @@ bool TessBaseAPI::ProcessPagesInternal(const char* filename,
 
   // Produce output
   bool r = false;
-  if (tiff) {
+  if (format == IFF_TIFF) {
+    // data is NULL unless buffering from stdin
     r = ProcessPagesMultipageTiff(data, buf.size(), filename, retry_config,
                                   timeout_millisec, renderer,
                                   tesseract_->tessedit_page_number);

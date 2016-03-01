@@ -627,6 +627,10 @@ class TESS_API TessBaseAPI {
 
   /** Returns the (average) confidence value between 0 and 100. */
   int MeanTextConf();
+
+  /** Returns the (average) confidence value between 0 and 100 and a count of words */
+  int MeanTextConf(int *wordCount);
+
   /**
    * Returns all word confidences (between 0 and 100) in an array, terminated
    * by -1.  The calling function must delete [] after use.

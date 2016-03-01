@@ -1248,6 +1248,10 @@ bool TessBaseAPI::ProcessPage(Pix* pix, int page_index, const char* filename,
     failed = !renderer->AddImage(this);
   }
 
+  int wordCount;
+  int conf = MeanTextConf(&wordCount);
+  tprintf("Words & confidence =%4d,%3d%%\n", wordCount, conf);
+
   PERF_COUNT_END
   return !failed;
 }
@@ -1829,15 +1833,21 @@ char* TessBaseAPI::GetOsdText(int page_number) {
 }
 
 /** Returns the average word confidence for Tesseract page result. */
-int TessBaseAPI::MeanTextConf() {
+int TessBaseAPI::MeanTextConf(int* wordCount) {
   int* conf = AllWordConfidences();
+  if (wordCount) *wordCount = 0;
   if (!conf) return 0;
   int sum = 0;
   int *pt = conf;
   while (*pt >= 0) sum += *pt++;
   if (pt != conf) sum /= pt - conf;
+  if (wordCount) *wordCount = pt - conf;
   delete [] conf;
   return sum;
+}
+
+int TessBaseAPI::MeanTextConf() {
+  return MeanTextConf(NULL);
 }
 
 /** Returns an array of all word confidences, terminated by -1. */

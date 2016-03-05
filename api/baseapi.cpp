@@ -1576,7 +1576,25 @@ char* TessBaseAPI::GetHOCRText(struct ETEXT_DESC* monitor, int page_number) {
       default:  // Do nothing.
         break;
     }
-    hocr_str += ">";
+    // TODO: Combine font attributes for entire span with identical attributes
+    hocr_str += " style=\"";
+    if (font_info) {
+      if (font_name) {
+        hocr_str += "font-family:'";
+        hocr_str += font_name;
+        hocr_str += "',";
+        hocr_str += serif ? "serif" : "sans-serif";
+        hocr_str += ";" ;
+      }
+      hocr_str.add_str_int("font-size:", pointsize);
+      hocr_str += "pt;";
+    }
+    if (smallcaps) hocr_str += "font-variant:small-caps;";
+    if (underlined) hocr_str += "text-decoration:underline;";
+    hocr_str += "\""; // end of style string
+
+    hocr_str += ">"; // end of span begin tag
+
     bool last_word_in_line = res_it->IsAtFinalElement(RIL_TEXTLINE, RIL_WORD);
     bool last_word_in_para = res_it->IsAtFinalElement(RIL_PARA, RIL_WORD);
     bool last_word_in_block = res_it->IsAtFinalElement(RIL_BLOCK, RIL_WORD);
